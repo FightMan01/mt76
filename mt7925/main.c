@@ -733,7 +733,7 @@ mt7925_pm_interface_iter(void *priv, u8 *mac, struct ieee80211_vif *vif)
 	}
 }
 
-static void
+static void __maybe_unused
 mt7925_sniffer_interface_iter(void *priv, u8 *mac, struct ieee80211_vif *vif)
 {
 	struct mt792x_dev *dev = priv;
@@ -774,14 +774,14 @@ static int mt7925_config(struct ieee80211_hw *hw, u32 changed)
 
 	if (changed & IEEE80211_CONF_CHANGE_CHANNEL) {
 		ieee80211_stop_queues(hw);
-		ret = mt792x_set_channel(phy, &hw->conf.chandef);
+		ret = mt76_set_channel(phy->mt76, &hw->conf.chandef, false, true);
 		if (ret)
 			return ret;
 		ieee80211_wake_queues(hw);
 	}
 
 	if (changed & IEEE80211_CONF_CHANGE_POWER) {
-		ret = mt792x_set_tx_sar_pwr(hw, NULL);
+		ret = mt7925_set_tx_sar_pwr(hw, NULL);
 		if (ret)
 			return ret;
 	}
@@ -801,16 +801,16 @@ static int mt7925_config(struct ieee80211_hw *hw, u32 changed)
 		bool enabled = !!(hw->conf.flags & IEEE80211_CONF_MONITOR);
 
 		if (!enabled)
-			phy->rxfilter |= MT_WF_RFCR_DROP_OTHER_UC;
+			dev->mt76.rxfilter |= MT_WF_RFCR_DROP_OTHER_UC;
 		else
-			phy->rxfilter &= ~MT_WF_RFCR_DROP_OTHER_UC;
+			dev->mt76.rxfilter &= ~MT_WF_RFCR_DROP_OTHER_UC;
 
 		mt76_connac_mcu_set_pm(&dev->mt76, dev->pm.enable,
 				       dev->pm.enable_user);
 
-		mt7925_mcu_set_rxfilter(dev, phy->rxfilter,
-					phy->rxfilter & MT_WF_RFCR_DROP_OTHER_UC,
-					!phy->rxfilter);
+		mt7925_mcu_set_rxfilter(dev, dev->mt76.rxfilter,
+					dev->mt76.rxfilter & MT_WF_RFCR_DROP_OTHER_UC,
+					!dev->mt76.rxfilter);
 	}
 
 	mutex_unlock(&dev->mt76.mutex);
@@ -1334,12 +1334,12 @@ static int mt7925_ampdu_action(struct ieee80211_hw *hw,
 	mutex_lock(&dev->mt76.mutex);
 	switch (action) {
 	case IEEE80211_AMPDU_RX_START:
-		mt76_rx_aggr_start(&dev->mt76, &msta->wcid, tid, ssn,
+		mt76_rx_aggr_start(&dev->mt76, &msta->deflink.wcid, tid, ssn,
 				   params->buf_size);
 		ret = mt7925_mcu_uni_rx_ba(dev, params, true);
 		break;
 	case IEEE80211_AMPDU_RX_STOP:
-		mt76_rx_aggr_stop(&dev->mt76, &msta->wcid, tid);
+		mt76_rx_aggr_stop(&dev->mt76, &msta->deflink.wcid, tid);
 		ret = mt7925_mcu_uni_rx_ba(dev, params, false);
 		break;
 	case IEEE80211_AMPDU_TX_OPERATIONAL:
@@ -1352,17 +1352,17 @@ static int mt7925_ampdu_action(struct ieee80211_hw *hw,
 	case IEEE80211_AMPDU_TX_STOP_FLUSH:
 	case IEEE80211_AMPDU_TX_STOP_FLUSH_CONT:
 		mtxq->aggr = false;
-		clear_bit(tid, &msta->wcid.ampdu_state);
+		clear_bit(tid, &msta->deflink.wcid.ampdu_state);
 		ret = mt7925_mcu_uni_tx_ba(dev, params, false);
 		break;
 	case IEEE80211_AMPDU_TX_START:
-		set_bit(tid, &msta->wcid.ampdu_state);
+		set_bit(tid, &msta->deflink.wcid.ampdu_state);
 		/* Optimized aggregation start with faster setup */
 		ret = IEEE80211_AMPDU_TX_START_IMMEDIATE;
 		break;
 	case IEEE80211_AMPDU_TX_STOP_CONT:
 		mtxq->aggr = false;
-		clear_bit(tid, &msta->wcid.ampdu_state);
+		clear_bit(tid, &msta->deflink.wcid.ampdu_state);
 		ret = mt7925_mcu_uni_tx_ba(dev, params, false);
 		ieee80211_stop_tx_ba_cb_irqsafe(vif, sta->addr, tid);
 		break;
