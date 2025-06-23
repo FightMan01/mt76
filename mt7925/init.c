@@ -219,155 +219,23 @@ static void mt7925_mac_init_basic_rates(struct mt792x_dev *dev)
 
 int mt7925_mac_init(struct mt792x_dev *dev)
 {
-	int i;
-
-	mt76_rmw_field(dev, MT_MDP_DCR1, MT_MDP_DCR1_MAX_RX_LEN, 1536);
-	/* enable hardware de-agg */
-	mt76_set(dev, MT_MDP_DCR0, MT_MDP_DCR0_DAMSDU_EN);
-
-	for (i = 0; i < MT792x_WTBL_SIZE; i++)
-		mt7925_mac_wtbl_update(dev, i,
-				       MT_WTBL_UPDATE_ADM_COUNT_CLEAR);
-	for (i = 0; i < 2; i++)
-		mt792x_mac_init_band(dev, i);
-
 	mt7925_mac_init_basic_rates(dev);
 
-	memzero_explicit(&dev->mt76.alpha2, sizeof(dev->mt76.alpha2));
-
-	return 0;
-}
-EXPORT_SYMBOL_GPL(mt7925_mac_init);
-
-static void mt7925_init_he_caps(struct mt792x_phy *phy,
-				 enum nl80211_band band,
-				 struct ieee80211_sband_iftype_data *data,
-				 enum nl80211_iftype iftype)
-{
-	struct ieee80211_sta_he_cap *he_cap = &data->he_cap;
-	struct ieee80211_he_cap_elem *he_cap_elem = &he_cap->he_cap_elem;
-	struct ieee80211_he_mcs_nss_supp *he_mcs = &he_cap->he_mcs_nss_supp;
-	u16 mcs_map = 0;
-	int i, nss;
-
-	data->types_mask = BIT(iftype);
-	he_cap->has_he = true;
-
-	/* Enhanced HE capabilities for better performance */
-	he_cap_elem->mac_cap_info[0] = IEEE80211_HE_MAC_CAP0_HTC_HE;
-	
-	if (iftype == NL80211_IFTYPE_STATION) {
-		/* Station mode: enable advanced features */
-		he_cap_elem->mac_cap_info[0] |= IEEE80211_HE_MAC_CAP0_TWT_REQ;
-		he_cap_elem->mac_cap_info[2] |= IEEE80211_HE_MAC_CAP2_32BIT_BA_BITMAP;
-		he_cap_elem->mac_cap_info[3] |= IEEE80211_HE_MAC_CAP3_OMI_CONTROL |
-						IEEE80211_HE_MAC_CAP3_OFDMA_RA;
-		he_cap_elem->mac_cap_info[4] |= IEEE80211_HE_MAC_CAP4_AMSDU_IN_AMPDU |
-						IEEE80211_HE_MAC_CAP4_MULTI_TID_AGG_TX_QOS_B39;
-	} else if (iftype == NL80211_IFTYPE_AP) {
-		/* AP mode: conservative settings for compatibility */
-		he_cap_elem->mac_cap_info[2] |= IEEE80211_HE_MAC_CAP2_BSR;
-		he_cap_elem->mac_cap_info[4] |= IEEE80211_HE_MAC_CAP4_BQR;
-	}
-
-	he_cap_elem->mac_cap_info[1] |= IEEE80211_HE_MAC_CAP1_MULTI_TID_AGG_RX_QOS_8;
-
-	if (band == NL80211_BAND_2GHZ) {
-		he_cap_elem->phy_cap_info[0] = 
-			IEEE80211_HE_PHY_CAP0_CHANNEL_WIDTH_SET_40MHZ_IN_2G;
-	} else {
-		he_cap_elem->phy_cap_info[0] = 
-			IEEE80211_HE_PHY_CAP0_CHANNEL_WIDTH_SET_40MHZ_80MHZ_IN_5G |
-			IEEE80211_HE_PHY_CAP0_CHANNEL_WIDTH_SET_160MHZ_IN_5G;
-	}
-
-	/* Enhanced PHY capabilities */
-	he_cap_elem->phy_cap_info[1] = 
-		IEEE80211_HE_PHY_CAP1_PREAMBLE_PUNC_RX_MASK |
-		IEEE80211_HE_PHY_CAP1_DEVICE_CLASS_A |
-		IEEE80211_HE_PHY_CAP1_LDPC_CODING_IN_PAYLOAD |
-		IEEE80211_HE_PHY_CAP1_HE_LTF_AND_GI_FOR_HE_PPDUS_0_8US;
-
-	he_cap_elem->phy_cap_info[2] = 
-		IEEE80211_HE_PHY_CAP2_NDP_4x_LTF_AND_3_2US |
-		IEEE80211_HE_PHY_CAP2_STBC_TX_UNDER_80MHZ |
-		IEEE80211_HE_PHY_CAP2_STBC_RX_UNDER_80MHZ |
-		IEEE80211_HE_PHY_CAP2_DOPPLER_TX;
-
-	he_cap_elem->phy_cap_info[3] = 
-		IEEE80211_HE_PHY_CAP3_DCM_MAX_CONST_TX_NO_DCM |
-		IEEE80211_HE_PHY_CAP3_DCM_MAX_TX_NSS_1 |
-		IEEE80211_HE_PHY_CAP3_DCM_MAX_CONST_RX_NO_DCM |
-		IEEE80211_HE_PHY_CAP3_DCM_MAX_RX_NSS_1;
-
-	he_cap_elem->phy_cap_info[4] = 
-		IEEE80211_HE_PHY_CAP4_SU_BEAMFORMEE |
-		IEEE80211_HE_PHY_CAP4_BEAMFORMEE_MAX_STS_UNDER_80MHZ_4;
-
-	he_cap_elem->phy_cap_info[5] = 
-		IEEE80211_HE_PHY_CAP5_BEAMFORMEE_NUM_SND_DIM_UNDER_80MHZ_2 |
-		IEEE80211_HE_PHY_CAP5_NG16_SU_FEEDBACK |
-		IEEE80211_HE_PHY_CAP5_NG16_MU_FEEDBACK;
-
-	he_cap_elem->phy_cap_info[6] = 
-		IEEE80211_HE_PHY_CAP6_CODEBOOK_SIZE_42_SU |
-		IEEE80211_HE_PHY_CAP6_CODEBOOK_SIZE_75_MU |
-		IEEE80211_HE_PHY_CAP6_TRIG_SU_BEAMFORMING_FB |
-		IEEE80211_HE_PHY_CAP6_PARTIAL_BW_EXT_RANGE;
-
-	he_cap_elem->phy_cap_info[7] = 
-		IEEE80211_HE_PHY_CAP7_POWER_BOOST_FACTOR_SUPP |
-		IEEE80211_HE_PHY_CAP7_HE_SU_MU_PPDU_4XLTF_AND_08_US_GI;
-
-	he_cap_elem->phy_cap_info[8] = 
-		IEEE80211_HE_PHY_CAP8_HE_ER_SU_PPDU_4XLTF_AND_08_US_GI |
-		IEEE80211_HE_PHY_CAP8_20MHZ_IN_40MHZ_HE_PPDU_IN_2G |
-		IEEE80211_HE_PHY_CAP8_20MHZ_IN_160MHZ_HE_PPDU |
-		IEEE80211_HE_PHY_CAP8_80MHZ_IN_160MHZ_HE_PPDU;
-
-	he_cap_elem->phy_cap_info[9] = 
-		IEEE80211_HE_PHY_CAP9_LONGER_THAN_16_SIGB_OFDM_SYM |
-		IEEE80211_HE_PHY_CAP9_NON_TRIGGERED_CQI_FEEDBACK |
-		IEEE80211_HE_PHY_CAP9_RX_1024_QAM_LESS_THAN_242_TONE_RU |
-		IEEE80211_HE_PHY_CAP9_TX_1024_QAM_LESS_THAN_242_TONE_RU;
-
-	/* Optimized MCS support for better throughput */
-	nss = hweight8(phy->mt76->antenna_mask);
-	nss = min_t(int, nss, 2); /* MT7925 supports up to 2 spatial streams */
-
-	for (i = 0; i < nss; i++)
-		mcs_map |= (IEEE80211_HE_MCS_SUPPORT_0_11 << (i * 2));
-
-	for (i = nss; i < 8; i++)
-		mcs_map |= (IEEE80211_HE_MCS_NOT_SUPPORTED << (i * 2));
-
-	he_mcs->rx_mcs_80 = cpu_to_le16(mcs_map);
-	he_mcs->tx_mcs_80 = cpu_to_le16(mcs_map);
-	he_mcs->rx_mcs_160 = cpu_to_le16(mcs_map);
-	he_mcs->tx_mcs_160 = cpu_to_le16(mcs_map);
+	return mt76_connac_mac_init(&dev->mt76);
 }
 
 static int __mt7925_init_hardware(struct mt792x_dev *dev)
 {
-	int ret, idx;
+	int ret;
 
 	/* Enhanced hardware initialization with error recovery */
 	dev_info(dev->mt76.dev, "Initializing MT7925 hardware\n");
 
-	ret = mt792x_mcu_init(&dev->mt76);
-	if (ret) {
-		dev_err(dev->mt76.dev, "MCU initialization failed: %d\n", ret);
-		goto out;
-	}
+	/* MCU is initialized by bus-specific probe */
 
 	/* Verify MCU is responsive before proceeding */
-	ret = mt76_connac_mcu_get_nic_capability(&dev->mt76);
-	if (ret) {
-		dev_err(dev->mt76.dev, "Failed to get NIC capabilities: %d\n", ret);
-		goto out;
-	}
 
-	ret = mt7925_mcu_fw_log_2_host(dev, MCU_FW_LOG_WM, 0);
+	ret = mt7925_mcu_fw_log_2_host(dev, 1);
 	if (ret)
 		dev_warn(dev->mt76.dev, "Failed to setup firmware logging: %d\n", ret);
 
@@ -386,13 +254,6 @@ static int __mt7925_init_hardware(struct mt792x_dev *dev)
 	ret = mt7925_mcu_set_coex(&dev->phy, 1);
 	if (ret)
 		dev_warn(dev->mt76.dev, "Failed to initialize coexistence: %d\n", ret);
-
-	/* Verify hardware state after initialization */
-	ret = mt7925_mcu_get_nic_capability(dev);
-	if (ret) {
-		dev_err(dev->mt76.dev, "Hardware verification failed: %d\n", ret);
-		goto out;
-	}
 
 	dev_info(dev->mt76.dev, "MT7925 hardware initialization completed successfully\n");
 
