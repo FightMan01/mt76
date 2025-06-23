@@ -2072,4 +2072,9 @@ enum {
 	UNI_CMD_BT_COEX = 0x2,
 };
 
+enum {
+	UNI_CMD_COEX_REQ_OFF,
+	UNI_CMD_COEX_REQ_ON,
+};
+
 #endif /* __MT76_CONNAC_MCU_H */
