@@ -32,12 +32,11 @@ mt7925_init_he_caps(struct mt792x_phy *phy, enum nl80211_band band,
 	he_cap->has_he = true;
 
 	he_cap_elem->mac_cap_info[0] = IEEE80211_HE_MAC_CAP0_HTC_HE;
-
 	if (iftype != NL80211_IFTYPE_AP)
-		he_cap_elem->mac_cap_info[2] |= IEEE80211_HE_MAC_CAP2_TWT_REQ;
+		he_cap_elem->mac_cap_info[0] |= IEEE80211_HE_MAC_CAP0_TWT_REQ;
 
 	he_cap_elem->mac_cap_info[3] = IEEE80211_HE_MAC_CAP3_OMI_CONTROL |
-				       IEEE80211_HE_MAC_CAP3_MAX_AMPDU_LEN_EXP_EXT_7;
+				       IEEE80211_HE_MAC_CAP3_MAX_AMPDU_LEN_EXP_EXT_3;
 	he_cap_elem->mac_cap_info[4] = IEEE80211_HE_MAC_CAP4_AMSDU_IN_AMPDU;
 
 	if (band == NL80211_BAND_2GHZ)
@@ -1753,32 +1752,21 @@ int mt7925_set_tx_sar_pwr(struct ieee80211_hw *hw,
 			  const struct cfg80211_sar_specs *sar)
 {
 	struct mt76_phy *mphy = hw->priv;
-	int err;
-	s8 tx_power;
+	int err, tx_power;
 	struct mt76_power_limits limits;
 
 	if (sar) {
-		err = mt76_init_sar_power(hw, sar);
+		err = mt76_init_sar_power(mphy->hw, sar);
 		if (err)
 			return err;
 	}
 	mt792x_init_acpi_sar_power(mt792x_hw_phy(hw), !sar);
 
-	err = mt7925_mcu_set_rate_txpower(mphy);
-	if (err)
-		return err;
-
-	s8 power_level = hw->conf.power_level;
-	if (power_level == 0) {
-		power_level = 20;
-		dev_info(mphy->dev->dev, "TX power not configured, using default %d dBm\n", power_level);
-	}
-	
-	tx_power = mt76_get_power_bound(mphy, power_level);
+	tx_power = mt76_get_power_bound(mphy, hw->conf.power_level);
 	tx_power = mt76_get_rate_power_limits(mphy, mphy->chandef.chan,
 					      &limits, tx_power);
 	mphy->txpower_cur = tx_power;
-	return 0;
+	return mt7925_mcu_set_rate_txpower(mphy);
 }
 
 static int mt7925_set_sar_specs(struct ieee80211_hw *hw,
