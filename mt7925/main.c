@@ -1384,6 +1384,22 @@ static bool is_valid_alpha2(const char *alpha2)
 	return false;
 }
 
+static void mt7925_beacon_refresh_iter(void *priv, u8 *mac,
+				       struct ieee80211_vif *vif)
+{
+	struct mt792x_phy *phy = priv;
+	struct mt792x_dev *dev = phy->dev;
+
+	if (vif->type != NL80211_IFTYPE_AP)
+		return;
+
+	mt792x_mutex_acquire(dev);
+	if (vif->bss_conf.enable_beacon)
+		mt7925_mcu_uni_add_beacon_offload(dev, mt76_hw(dev), vif,
+						  true);
+	mt792x_mutex_release(dev);
+}
+
 static void mt7925_beacon_refresh_work(struct work_struct *work)
 {
 	struct mt792x_phy *phy = container_of(work, struct mt792x_phy,
@@ -1400,31 +1416,6 @@ static void mt7925_beacon_refresh_work(struct work_struct *work)
 
 	ieee80211_queue_delayed_work(hw, &phy->beacon_refresh_work,
 				     msecs_to_jiffies(30000));
-}
-
-static void mt7925_beacon_refresh_iter(void *priv, u8 *mac,
-				       struct ieee80211_vif *vif)
-{
-	struct mt792x_phy *phy = priv;
-	struct mt792x_dev *dev = phy->dev;
-
-	if (vif->type != NL80211_IFTYPE_AP)
-		return;
-
-	mt792x_mutex_acquire(dev);
-	if (vif->bss_conf.enable_beacon) {
-		struct ieee80211_bss_conf *link_conf;
-		struct mt792x_bss_conf *mconf;
-		struct mt792x_vif *mvif = (struct mt792x_vif *)vif->drv_priv;
-
-		link_conf = mt792x_vif_to_link(mvif, 0);
-		mconf = mt792x_vif_to_mconf(mvif, 0);
-		if (link_conf && mconf) {
-			mt7925_mcu_uni_add_beacon_offload(dev, mt76_hw(dev), vif,
-							  link_conf, true);
-		}
-	}
-	mt792x_mutex_release(dev);
 }
 
 void mt7925_scan_work(struct work_struct *work)
@@ -1712,7 +1703,6 @@ static void __mt7925_ipv6_addr_change(struct ieee80211_hw *hw,
 			.enable = true,
 		},
 	};
-
 	read_lock_bh(&idev->lock);
 	list_for_each_entry(ifa, &idev->addr_list, if_list) {
 		if (ifa->flags & IFA_F_TENTATIVE)
@@ -1777,7 +1767,13 @@ int mt7925_set_tx_sar_pwr(struct ieee80211_hw *hw,
 	if (err)
 		return err;
 
-	tx_power = mt76_get_power_bound(mphy, hw->conf.power_level);
+	s8 power_level = hw->conf.power_level;
+	if (power_level == 0) {
+		power_level = 20;
+		dev_info(mphy->dev->dev, "TX power not configured, using default %d dBm\n", power_level);
+	}
+	
+	tx_power = mt76_get_power_bound(mphy, power_level);
 	tx_power = mt76_get_rate_power_limits(mphy, mphy->chandef.chan,
 					      &limits, tx_power);
 	mphy->txpower_cur = tx_power;
@@ -2377,3 +2373,4 @@ EXPORT_SYMBOL_GPL(mt7925_ops);
 MODULE_AUTHOR("Deren Wu <deren.wu@mediatek.com>");
 MODULE_DESCRIPTION("MediaTek MT7925 core driver");
 MODULE_LICENSE("Dual BSD/GPL");
+
