@@ -1706,17 +1706,25 @@ static void mt7925_ipv6_addr_change(struct ieee80211_hw *hw,
 int mt7925_set_tx_sar_pwr(struct ieee80211_hw *hw,
 			  const struct cfg80211_sar_specs *sar)
 {
-	struct mt76_phy *mphy = hw->priv;
+	struct mt792x_phy *phy = mt792x_hw_phy(hw);
+	struct mt76_phy *mphy = &phy->mt76;
+	int err, pwr;
 
-	if (sar) {
-		int err = mt76_init_sar_power(hw, sar);
+	err = mt7925_mcu_set_tx_power_from_sar(phy, sar);
+	if (err)
+		return err;
 
-		if (err)
-			return err;
-	}
-	mt792x_init_acpi_sar_power(mt792x_hw_phy(hw), !sar);
+	memcpy(&mphy->sar_power_limit, sar, sizeof(*sar));
+	mphy->sar_power_ctrl = true;
 
-	return mt7925_mcu_set_rate_txpower(mphy);
+	pwr = hw->conf.power_level;
+	if (pwr == 0)
+		pwr = mt76_get_power_bound(mphy, pwr);
+
+	mphy->txpower_cur = mt76_get_sar_power(mphy, mphy->chandef.chan,
+						   pwr);
+
+	return 0;
 }
 
 static int mt7925_set_sar_specs(struct ieee80211_hw *hw,
