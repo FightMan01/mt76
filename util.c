@@ -136,16 +136,3 @@ EXPORT_SYMBOL_GPL(__mt76_worker_fn);
 
 MODULE_DESCRIPTION("MediaTek MT76x helpers");
 MODULE_LICENSE("Dual BSD/GPL");
-
-s8 mt76_get_power_bound(struct mt76_phy *phy, s8 txp)
-{
-	int n_antennas = phy->antenna_mask;
-
-	if (!txp)
-		return 0;
-
-	txp = min_t(s8, txp, phy->txpower_eeprom);
-
-	return max_t(s8, txp, n_antennas);
-}
-EXPORT_SYMBOL_GPL(mt76_get_power_bound);
