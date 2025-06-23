@@ -774,7 +774,7 @@ static int mt7925_config(struct ieee80211_hw *hw, u32 changed)
 
 	if (changed & IEEE80211_CONF_CHANGE_CHANNEL) {
 		ieee80211_stop_queues(hw);
-		ret = mt76_set_channel(phy->mt76, &hw->conf.chandef, false, true);
+		ret = mt76_set_channel(phy->mt76, &hw->conf.chandef, false);
 		if (ret)
 			return ret;
 		ieee80211_wake_queues(hw);
