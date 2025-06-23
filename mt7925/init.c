@@ -221,7 +221,7 @@ int mt7925_mac_init(struct mt792x_dev *dev)
 {
 	mt7925_mac_init_basic_rates(dev);
 
-	return mt76_connac_mac_init(&dev->mt76);
+	return 0;
 }
 
 static int __mt7925_init_hardware(struct mt792x_dev *dev)
