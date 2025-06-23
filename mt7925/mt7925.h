@@ -293,7 +293,6 @@ int mt7925_mcu_uni_rx_ba(struct mt792x_dev *dev,
 			 bool enable);
 void mt7925_mlo_pm_work(struct work_struct *work);
 void mt7925_scan_work(struct work_struct *work);
-void mt7925_beacon_refresh_work(struct work_struct *work);
 void mt7925_roc_work(struct work_struct *work);
 int mt7925_mcu_uni_bss_ps(struct mt792x_dev *dev,
 			  struct ieee80211_bss_conf *link_conf);

@@ -186,7 +186,6 @@ struct mt792x_phy {
 	u8 roc_token_id;
 	bool roc_grant;
 	bool ap_active;
-	
 	struct delayed_work beacon_refresh_work;
 };
 

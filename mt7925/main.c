@@ -1412,7 +1412,18 @@ static void mt7925_beacon_refresh_iter(void *priv, u8 *mac,
 		return;
 
 	mt792x_mutex_acquire(dev);
-	mt7925_mcu_uni_add_beacon_offload(dev, mt76_hw(dev), vif, true);
+	if (vif->bss_conf.enable_beacon) {
+		struct ieee80211_bss_conf *link_conf;
+		struct mt792x_bss_conf *mconf;
+		struct mt792x_vif *mvif = (struct mt792x_vif *)vif->drv_priv;
+
+		link_conf = mt792x_vif_to_link(mvif, 0);
+		mconf = mt792x_vif_to_mconf(mvif, 0);
+		if (link_conf && mconf) {
+			mt7925_mcu_uni_add_beacon_offload(dev, mt76_hw(dev), vif,
+							  link_conf, true);
+		}
+	}
 	mt792x_mutex_release(dev);
 }
 
@@ -1830,6 +1841,7 @@ mt7925_start_ap(struct ieee80211_hw *hw, struct ieee80211_vif *vif,
 {
 	struct mt792x_vif *mvif = (struct mt792x_vif *)vif->drv_priv;
 	struct mt792x_dev *dev = mt792x_hw_dev(hw);
+	struct mt792x_phy *phy = mt792x_hw_phy(hw);
 	int err;
 
 	mt792x_mutex_acquire(dev);
@@ -1866,6 +1878,7 @@ mt7925_stop_ap(struct ieee80211_hw *hw, struct ieee80211_vif *vif,
 {
 	struct mt792x_vif *mvif = (struct mt792x_vif *)vif->drv_priv;
 	struct mt792x_dev *dev = mt792x_hw_dev(hw);
+	struct mt792x_phy *phy = mt792x_hw_phy(hw);
 	int err;
 
 	mt792x_mutex_acquire(dev);
