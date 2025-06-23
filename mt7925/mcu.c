@@ -3401,16 +3401,14 @@ int mt7925_mcu_fill_message(struct mt76_dev *mdev, struct sk_buff *skb,
 	if (cmd == MCU_CMD(FW_SCATTER) || cmd == MCU_UNI_CMD(CHIP_CONFIG)) {
 		/* Fast commands - 5 seconds */
 		mdev->mcu.timeout = 5 * HZ;
-	} else if (cmd == MCU_UNI_CMD(SCAN_REQ) || cmd == MCU_UNI_CMD(SCAN_CANCEL) ||
-		   cmd == MCU_UNI_CMD(ROC) || cmd == MCU_UNI_CMD(SCHED_SCAN_REQ)) {
+	} else if (cmd == MCU_UNI_CMD(SCAN_REQ) || cmd == MCU_UNI_CMD(ROC)) {
 		/* Scan operations - 30 seconds */
 		mdev->mcu.timeout = 30 * HZ;
 	} else if (cmd == MCU_UNI_CMD(SUSPEND) || cmd == MCU_UNI_CMD(OFFLOAD)) {
 		/* Power management operations - 15 seconds */
 		mdev->mcu.timeout = 15 * HZ;
-	} else if ((cmd & __MCU_CMD_FIELD_UNI) && 
-		   (mcu_cmd == MCU_UNI_CMD_TESTMODE_CTRL || 
-		    mcu_cmd == MCU_UNI_CMD_TESTMODE_RX_STAT)) {
+	} else if (mcu_cmd == MCU_UNI_CMD_TESTMODE_CTRL || 
+		   mcu_cmd == MCU_UNI_CMD_TESTMODE_RX_STAT) {
 		/* Test mode operations - 10 seconds */
 		mdev->mcu.timeout = 10 * HZ;
 	} else {
