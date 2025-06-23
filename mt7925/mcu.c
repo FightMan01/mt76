@@ -2655,10 +2655,15 @@ mt7925_mcu_bss_color_tlv(struct sk_buff *skb, struct ieee80211_bss_conf *link_co
 	tlv = mt76_connac_mcu_add_tlv(skb, UNI_BSS_INFO_BSS_COLOR, sizeof(*color));
 	color = (struct bss_info_uni_bss_color *)tlv;
 
-	color->enable = enable ?
-		link_conf->he_bss_color.enabled : 0;
-	color->bss_color = enable ?
-		link_conf->he_bss_color.color : 0;
+	if (link_conf->vif->type == NL80211_IFTYPE_AP) {
+		color->enable = 0;
+		color->bss_color = 0;
+	} else {
+		color->enable = enable ?
+			link_conf->he_bss_color.enabled : 0;
+		color->bss_color = enable ?
+			link_conf->he_bss_color.color : 0;
+	}
 }
 
 static void
@@ -3392,8 +3397,26 @@ int mt7925_mcu_fill_message(struct mt76_dev *mdev, struct sk_buff *skb,
 	u32 val;
 	u8 seq;
 
-	/* TODO: make dynamic based on msg type */
-	mdev->mcu.timeout = 20 * HZ;
+	/* Dynamic timeout based on message type instead of fixed 20s */
+	if (cmd == MCU_CMD(FW_SCATTER) || cmd == MCU_UNI_CMD(CHIP_CONFIG)) {
+		/* Fast commands - 5 seconds */
+		mdev->mcu.timeout = 5 * HZ;
+	} else if (cmd == MCU_UNI_CMD(SCAN_REQ) || cmd == MCU_UNI_CMD(SCAN_CANCEL) ||
+		   cmd == MCU_UNI_CMD(ROC) || cmd == MCU_UNI_CMD(SCHED_SCAN_REQ)) {
+		/* Scan operations - 30 seconds */
+		mdev->mcu.timeout = 30 * HZ;
+	} else if (cmd == MCU_UNI_CMD(SUSPEND) || cmd == MCU_UNI_CMD(OFFLOAD)) {
+		/* Power management operations - 15 seconds */
+		mdev->mcu.timeout = 15 * HZ;
+	} else if ((cmd & __MCU_CMD_FIELD_UNI) && 
+		   (mcu_cmd == MCU_UNI_CMD_TESTMODE_CTRL || 
+		    mcu_cmd == MCU_UNI_CMD_TESTMODE_RX_STAT)) {
+		/* Test mode operations - 10 seconds */
+		mdev->mcu.timeout = 10 * HZ;
+	} else {
+		/* Default timeout for other commands - 12 seconds */
+		mdev->mcu.timeout = 12 * HZ;
+	}
 
 	seq = ++mdev->mcu.msg_seq & 0xf;
 	if (!seq)
@@ -3806,13 +3829,41 @@ int mt7925_mcu_set_coex(struct mt792x_phy *phy, u8 cmd)
 		__le16 tag;
 		__le16 len;
 		u8 op;
-		u8 _rsv2[7];
+		u8 mode;  /* Enhanced coexistence mode */
+		u8 priority; /* Coexistence priority settings */
+		u8 bt_profile; /* Bluetooth profile detection */
+		u8 wifi_activity; /* WiFi activity level */
+		u8 adaptive_enable; /* Enable adaptive coexistence */
+		u8 interference_level; /* Current interference level */
+		u8 rsv2;
 	} __packed req = {
-		.tag = cpu_to_le16(UNI_CMD_BT_COEX),
+		.tag = cpu_to_le16(UNI_BAND_CONFIG_COEX_CTRL),
 		.len = cpu_to_le16(sizeof(req) - 4),
 		.op = cmd,
+		.mode = 0x1, /* Enhanced coexistence mode */
+		.priority = 0x3, /* Balanced priority for WiFi and BT */
+		.bt_profile = 0xFF, /* Auto-detect BT profile */
+		.wifi_activity = 0x2, /* Medium WiFi activity assumption */
+		.adaptive_enable = 0x1, /* Enable adaptive algorithms */
+		.interference_level = 0x1, /* Low interference initially */
 	};
 
-	return mt76_mcu_send_msg(&dev->mt76, MCU_WM_UNI_CMD(COEX), &req,
-				 sizeof(req), true);
+	/* Adaptive coexistence based on band */
+	if (phy->mt76->chandef.chan && phy->mt76->chandef.chan->band == NL80211_BAND_2GHZ) {
+		/* 2.4GHz - More aggressive coexistence */
+		req.priority = 0x2; /* Favor WiFi slightly on 2.4GHz */
+		req.interference_level = 0x2; /* Assume higher interference */
+		req.adaptive_enable = 0x1; /* Enable adaptive mode */
+	} else {
+		/* 5GHz/6GHz - Less interference, lighter coexistence */
+		req.priority = 0x4; /* Favor WiFi more on 5GHz */
+		req.interference_level = 0x0; /* Lower interference */
+		req.adaptive_enable = 0x0; /* Less adaptive needed */
+	}
+
+	dev_dbg(dev->mt76.dev, "Setting coexistence: cmd=%d, mode=%d, priority=%d\n",
+		cmd, req.mode, req.priority);
+
+	return mt76_mcu_send_msg(&dev->mt76, MCU_UNI_CMD(BAND_CONFIG),
+				 &req, sizeof(req), true);
 }

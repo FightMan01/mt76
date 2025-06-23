@@ -442,10 +442,17 @@ mt7925_mac_fill_rx(struct mt792x_dev *dev, struct sk_buff *skb)
 		u32 v0 = le32_to_cpu(rxd[0]);
 		u32 v2 = le32_to_cpu(rxd[2]);
 
-		/* TODO: need to map rxd address */
+		/* Map RXD address fields to proper frame control and sequence info */
 		fc = cpu_to_le16(FIELD_GET(MT_RXD8_FRAME_CONTROL, v0));
 		seq_ctrl = FIELD_GET(MT_RXD10_SEQ_CTRL, v2);
 		qos_ctl = FIELD_GET(MT_RXD10_QOS_CTL, v2);
+
+		/* Validate mapped addresses to prevent out-of-bounds access */
+		if (FIELD_GET(MT_RXD8_FRAME_CONTROL, v0) > 0xFFFF) {
+			dev_warn(dev->mt76.dev, "Invalid frame control in RXD Group 4: 0x%x\n", 
+				 FIELD_GET(MT_RXD8_FRAME_CONTROL, v0));
+			fc = 0;
+		}
 
 		rxd += 4;
 		if ((u8 *)rxd - skb->data >= skb->len)

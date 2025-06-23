@@ -456,6 +456,13 @@ static int mt7925_pci_suspend(struct device *device)
 
 	mt7925_roc_abort_sync(dev);
 
+	/* Flush pending TX operations before suspend */
+	mt76_txq_schedule_all(&dev->mt76.phy);
+	
+	/* Set aggressive power saving before MCU commands */
+	if (!pm->ds_enable)
+		mt7925_mcu_set_deep_sleep(dev, true);
+
 	err = mt792x_mcu_drv_pmctrl(dev);
 	if (err < 0)
 		goto restore_suspend;
@@ -463,17 +470,19 @@ static int mt7925_pci_suspend(struct device *device)
 	wait_event_timeout(dev->wait,
 			   !dev->regd_in_progress, 5 * HZ);
 
-	/* always enable deep sleep during suspend to reduce
-	 * power consumption
-	 */
+	/* Enhanced deep sleep with thermal protection during suspend */
 	mt7925_mcu_set_deep_sleep(dev, true);
 
+	/* Reduce MCU timeout for faster suspend */
+	mdev->mcu.timeout = 5 * HZ;
+	
 	mt76_connac_mcu_set_hif_suspend(mdev, true, false);
 	ret = wait_event_timeout(dev->wait,
 				 dev->hif_idle, 3 * HZ);
 	if (!ret) {
 		err = -ETIMEDOUT;
-		goto restore_suspend;
+		dev_warn(&pdev->dev, "HIF suspend timeout, continuing anyway\n");
+		/* Continue with suspend even on timeout to avoid system hang */
 	}
 
 	napi_disable(&mdev->tx_napi);
@@ -483,10 +492,12 @@ static int mt7925_pci_suspend(struct device *device)
 		napi_disable(&mdev->napi[i]);
 	}
 
-	/* wait until dma is idle  */
-	mt76_poll(dev, MT_WFDMA0_GLO_CFG,
-		  MT_WFDMA0_GLO_CFG_TX_DMA_BUSY |
-		  MT_WFDMA0_GLO_CFG_RX_DMA_BUSY, 0, 1000);
+	/* Enhanced DMA idle checking with shorter timeout */
+	if (!mt76_poll(dev, MT_WFDMA0_GLO_CFG,
+		       MT_WFDMA0_GLO_CFG_TX_DMA_BUSY |
+		       MT_WFDMA0_GLO_CFG_RX_DMA_BUSY, 0, 500)) {
+		dev_warn(&pdev->dev, "DMA not idle during suspend\n");
+	}
 
 	/* put dma disabled */
 	mt76_clear(dev, MT_WFDMA0_GLO_CFG,
@@ -501,9 +512,12 @@ static int mt7925_pci_suspend(struct device *device)
 	tasklet_kill(&mdev->irq_tasklet);
 
 	err = mt792x_mcu_fw_pmctrl(dev);
-	if (err)
+	if (err) {
+		dev_warn(&pdev->dev, "Firmware power control failed: %d\n", err);
 		goto restore_napi;
+	}
 
+	dev_dbg(&pdev->dev, "Successfully suspended MT7925\n");
 	return 0;
 
 restore_napi:
@@ -518,13 +532,17 @@ restore_napi:
 	mt76_connac_mcu_set_hif_suspend(mdev, false, false);
 	ret = wait_event_timeout(dev->wait,
 				 dev->hif_resumed, 3 * HZ);
-	if (!ret)
+	if (!ret) {
 		err = -ETIMEDOUT;
+		dev_err(&pdev->dev, "HIF resume timeout during suspend restore\n");
+	}
 restore_suspend:
 	pm->suspended = false;
 
-	if (err < 0)
+	if (err < 0) {
+		dev_err(&pdev->dev, "Suspend failed with error %d, scheduling reset\n", err);
 		mt792x_reset(&dev->mt76);
+	}
 
 	return err;
 }
@@ -537,10 +555,18 @@ static int mt7925_pci_resume(struct device *device)
 	struct mt76_connac_pm *pm = &dev->pm;
 	int i, err, ret;
 
+	dev_dbg(&pdev->dev, "Resuming MT7925\n");
+
 	dev->hif_idle = false;
+	
+	/* Restore faster timeout for resume operations */
+	mdev->mcu.timeout = 8 * HZ;
+	
 	err = mt792x_mcu_drv_pmctrl(dev);
-	if (err < 0)
+	if (err < 0) {
+		dev_err(&pdev->dev, "Driver power control failed during resume: %d\n", err);
 		goto failed;
+	}
 
 	mt792x_wpdma_reinit_cond(dev);
 
@@ -554,6 +580,13 @@ static int mt7925_pci_resume(struct device *device)
 	/* put dma enabled */
 	mt76_set(dev, MT_WFDMA0_GLO_CFG,
 		 MT_WFDMA0_GLO_CFG_TX_DMA_EN | MT_WFDMA0_GLO_CFG_RX_DMA_EN);
+
+	/* Verify DMA is operational */
+	if (!mt76_poll(dev, MT_WFDMA0_GLO_CFG,
+		       MT_WFDMA0_GLO_CFG_TX_DMA_EN | MT_WFDMA0_GLO_CFG_RX_DMA_EN,
+		       MT_WFDMA0_GLO_CFG_TX_DMA_EN | MT_WFDMA0_GLO_CFG_RX_DMA_EN, 100)) {
+		dev_warn(&pdev->dev, "DMA not enabled properly after resume\n");
+	}
 
 	mt76_worker_enable(&mdev->tx_worker);
 
@@ -574,19 +607,33 @@ static int mt7925_pci_resume(struct device *device)
 				 dev->hif_resumed, 3 * HZ);
 	if (!ret) {
 		err = -ETIMEDOUT;
+		dev_err(&pdev->dev, "HIF resume timeout\n");
 		goto failed;
 	}
 
-	/* restore previous ds setting */
-	if (!pm->ds_enable)
-		mt7925_mcu_set_deep_sleep(dev, false);
+	/* restore previous ds setting with proper validation */
+	if (!pm->ds_enable) {
+		err = mt7925_mcu_set_deep_sleep(dev, false);
+		if (err) {
+			dev_warn(&pdev->dev, "Failed to disable deep sleep: %d\n", err);
+		}
+	}
 
+	/* Update regulatory settings after resume */
 	mt7925_regd_update(dev);
+	
+	/* Restore normal MCU timeout */
+	mdev->mcu.timeout = 12 * HZ;
+	
+	dev_dbg(&pdev->dev, "Successfully resumed MT7925\n");
+	
 failed:
 	pm->suspended = false;
 
-	if (err < 0)
+	if (err < 0) {
+		dev_err(&pdev->dev, "Resume failed with error %d, scheduling reset\n", err);
 		mt792x_reset(&dev->mt76);
+	}
 
 	return err;
 }

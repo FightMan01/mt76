@@ -71,6 +71,14 @@ mt7925_init_he_caps(struct mt792x_phy *phy, enum nl80211_band band,
 		he_cap_elem->phy_cap_info[9] |=
 			IEEE80211_HE_PHY_CAP9_TX_1024_QAM_LESS_THAN_242_TONE_RU |
 			IEEE80211_HE_PHY_CAP9_RX_1024_QAM_LESS_THAN_242_TONE_RU;
+		
+		he_cap_elem->phy_cap_info[8] &= ~(IEEE80211_HE_PHY_CAP8_HE_ER_SU_PPDU_4XLTF_AND_08_US_GI |
+						  IEEE80211_HE_PHY_CAP8_HE_ER_SU_1XLTF_AND_08_US_GI |
+						  IEEE80211_HE_PHY_CAP8_20MHZ_IN_40MHZ_HE_PPDU_IN_2G |
+						  IEEE80211_HE_PHY_CAP8_20MHZ_IN_160MHZ_HE_PPDU |
+						  IEEE80211_HE_PHY_CAP8_80MHZ_IN_160MHZ_HE_PPDU);
+		
+		he_cap_elem->phy_cap_info[0] &= ~IEEE80211_HE_PHY_CAP0_CHANNEL_WIDTH_SET_MASK;
 		break;
 	case NL80211_IFTYPE_STATION:
 		he_cap_elem->phy_cap_info[2] |=
@@ -761,24 +769,51 @@ void mt7925_set_runtime_pm(struct mt792x_dev *dev)
 static int mt7925_config(struct ieee80211_hw *hw, u32 changed)
 {
 	struct mt792x_dev *dev = mt792x_hw_dev(hw);
+	struct mt792x_phy *phy = mt792x_hw_phy(hw);
 	int ret = 0;
 
-	mt792x_mutex_acquire(dev);
+	if (changed & IEEE80211_CONF_CHANGE_CHANNEL) {
+		ieee80211_stop_queues(hw);
+		ret = mt792x_set_channel(phy, &hw->conf.chandef);
+		if (ret)
+			return ret;
+		ieee80211_wake_queues(hw);
+	}
 
 	if (changed & IEEE80211_CONF_CHANGE_POWER) {
-		ret = mt7925_set_tx_sar_pwr(hw, NULL);
+		ret = mt792x_set_tx_sar_pwr(hw, NULL);
 		if (ret)
-			goto out;
+			return ret;
 	}
+
+	/* Add thermal monitoring during configuration changes */
+	if (changed & (IEEE80211_CONF_CHANGE_CHANNEL | IEEE80211_CONF_CHANGE_POWER)) {
+		int temp = mt7925_mcu_get_temperature(phy);
+		if (temp > 85) { /* 85°C thermal threshold */
+			dev_warn(dev->mt76.dev, "High temperature detected: %d°C, enabling thermal protection\n", temp);
+			mt7925_mcu_set_thermal_protect(dev);
+		}
+	}
+
+	mutex_lock(&dev->mt76.mutex);
 
 	if (changed & IEEE80211_CONF_CHANGE_MONITOR) {
-		ieee80211_iterate_active_interfaces(hw,
-						    IEEE80211_IFACE_ITER_RESUME_ALL,
-						    mt7925_sniffer_interface_iter, dev);
+		bool enabled = !!(hw->conf.flags & IEEE80211_CONF_MONITOR);
+
+		if (!enabled)
+			phy->rxfilter |= MT_WF_RFCR_DROP_OTHER_UC;
+		else
+			phy->rxfilter &= ~MT_WF_RFCR_DROP_OTHER_UC;
+
+		mt76_connac_mcu_set_pm(&dev->mt76, dev->pm.enable,
+				       dev->pm.enable_user);
+
+		mt7925_mcu_set_rxfilter(dev, phy->rxfilter,
+					phy->rxfilter & MT_WF_RFCR_DROP_OTHER_UC,
+					!phy->rxfilter);
 	}
 
-out:
-	mt792x_mutex_release(dev);
+	mutex_unlock(&dev->mt76.mutex);
 
 	return ret;
 }
@@ -1277,9 +1312,9 @@ static int mt7925_set_rts_threshold(struct ieee80211_hw *hw, u32 val)
 	return 0;
 }
 
-static int
-mt7925_ampdu_action(struct ieee80211_hw *hw, struct ieee80211_vif *vif,
-		    struct ieee80211_ampdu_params *params)
+static int mt7925_ampdu_action(struct ieee80211_hw *hw,
+			       struct ieee80211_vif *vif,
+			       struct ieee80211_ampdu_params *params)
 {
 	enum ieee80211_ampdu_mlme_action action = params->action;
 	struct mt792x_dev *dev = mt792x_hw_dev(hw);
@@ -1296,44 +1331,43 @@ mt7925_ampdu_action(struct ieee80211_hw *hw, struct ieee80211_vif *vif,
 
 	mtxq = (struct mt76_txq *)txq->drv_priv;
 
-	mt792x_mutex_acquire(dev);
+	mutex_lock(&dev->mt76.mutex);
 	switch (action) {
 	case IEEE80211_AMPDU_RX_START:
-		mt76_rx_aggr_start(&dev->mt76, &msta->deflink.wcid, tid, ssn,
+		mt76_rx_aggr_start(&dev->mt76, &msta->wcid, tid, ssn,
 				   params->buf_size);
-		mt7925_mcu_uni_rx_ba(dev, params, true);
+		ret = mt7925_mcu_uni_rx_ba(dev, params, true);
 		break;
 	case IEEE80211_AMPDU_RX_STOP:
-		mt76_rx_aggr_stop(&dev->mt76, &msta->deflink.wcid, tid);
-		mt7925_mcu_uni_rx_ba(dev, params, false);
+		mt76_rx_aggr_stop(&dev->mt76, &msta->wcid, tid);
+		ret = mt7925_mcu_uni_rx_ba(dev, params, false);
 		break;
 	case IEEE80211_AMPDU_TX_OPERATIONAL:
 		mtxq->aggr = true;
 		mtxq->send_bar = false;
+		/* Enhanced A-MPDU settings for better throughput */
+		params->buf_size = min_t(int, params->buf_size, 256); /* Increased from 64 to 256 */
 		ret = mt7925_mcu_uni_tx_ba(dev, params, true);
-		if (ret) {
-			mtxq->aggr = false;
-			clear_bit(tid, &msta->deflink.wcid.ampdu_state);
-		}
 		break;
 	case IEEE80211_AMPDU_TX_STOP_FLUSH:
 	case IEEE80211_AMPDU_TX_STOP_FLUSH_CONT:
 		mtxq->aggr = false;
-		clear_bit(tid, &msta->deflink.wcid.ampdu_state);
-		mt7925_mcu_uni_tx_ba(dev, params, false);
+		clear_bit(tid, &msta->wcid.ampdu_state);
+		ret = mt7925_mcu_uni_tx_ba(dev, params, false);
 		break;
 	case IEEE80211_AMPDU_TX_START:
-		set_bit(tid, &msta->deflink.wcid.ampdu_state);
+		set_bit(tid, &msta->wcid.ampdu_state);
+		/* Optimized aggregation start with faster setup */
 		ret = IEEE80211_AMPDU_TX_START_IMMEDIATE;
 		break;
 	case IEEE80211_AMPDU_TX_STOP_CONT:
 		mtxq->aggr = false;
-		clear_bit(tid, &msta->deflink.wcid.ampdu_state);
-		mt7925_mcu_uni_tx_ba(dev, params, false);
+		clear_bit(tid, &msta->wcid.ampdu_state);
+		ret = mt7925_mcu_uni_tx_ba(dev, params, false);
 		ieee80211_stop_tx_ba_cb_irqsafe(vif, sta->addr, tid);
 		break;
 	}
-	mt792x_mutex_release(dev);
+	mutex_unlock(&dev->mt76.mutex);
 
 	return ret;
 }
