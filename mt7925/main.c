@@ -218,6 +218,7 @@ mt7925_init_eht_caps(struct mt792x_phy *phy, enum nl80211_band band,
 		u8_encode_bits(u8_get_bits(0x11, GENMASK(4, 2)),
 			       IEEE80211_EHT_PHY_CAP6_MAX_NUM_SUPP_EHT_LTF_MASK) |
 		u8_encode_bits(val, IEEE80211_EHT_PHY_CAP6_MCS15_SUPP_MASK);
+	eht_cap_elem->phy_cap_info[6] |= IEEE80211_EHT_PHY_CAP6_EHT20_OFDMA_PUNC_SUPP;
 
 	eht_cap_elem->phy_cap_info[7] =
 		IEEE80211_EHT_PHY_CAP7_NON_OFDMA_UL_MU_MIMO_80MHZ |
@@ -321,12 +322,9 @@ int __mt7925_start(struct mt792x_phy *phy)
 	if (err)
 		return err;
 
-	if (!dev->sar_inited) {
-		err = mt7925_set_tx_sar_pwr(mphy->hw, NULL);
-		if (err)
-			return err;
-		dev->sar_inited = true;
-	}
+	err = mt7925_mcu_set_coex(phy, UNI_CMD_COEX_REQ_ON);
+	if (err)
+		return err;
 
 	mt792x_mac_reset_counters(phy);
 	set_bit(MT76_STATE_RUNNING, &mphy->state);

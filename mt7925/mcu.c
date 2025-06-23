@@ -2832,7 +2832,7 @@ mt7925_mcu_build_scan_ie_tlv(struct mt76_dev *mdev,
 	u16 ies_len;
 
 	for (i = 0; i <= NL80211_BAND_6GHZ; i++) {
-		if (i == NL80211_BAND_60GHZ)
+		if (i == NL80211_BAND_60GH)
 			continue;
 
 		ies = scan_ies->ies[i];
@@ -3795,4 +3795,24 @@ int mt7925_mcu_set_rxfilter(struct mt792x_dev *dev, u32 fif,
 
 	return mt76_mcu_send_msg(&phy->dev->mt76, MCU_UNI_CMD(BAND_CONFIG),
 				 &req, sizeof(req), true);
+}
+
+int mt7925_mcu_set_coex(struct mt792x_phy *phy, u8 cmd)
+{
+	struct mt792x_dev *dev = phy->dev;
+	struct {
+		u8 _rsv[4];
+
+		__le16 tag;
+		__le16 len;
+		u8 op;
+		u8 _rsv2[7];
+	} __packed req = {
+		.tag = cpu_to_le16(UNI_CMD_BT_COEX),
+		.len = cpu_to_le16(sizeof(req) - 4),
+		.op = cmd,
+	};
+
+	return mt76_mcu_send_msg(&dev->mt76, MCU_WM_UNI_CMD(COEX), &req,
+				 sizeof(req), true);
 }

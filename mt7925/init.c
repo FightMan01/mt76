@@ -247,6 +247,10 @@ static int __mt7925_init_hardware(struct mt792x_dev *dev)
 	if (ret)
 		goto out;
 
+	snprintf(dev->mphy.hw->wiphy->fw_version,
+		 sizeof(dev->mphy.hw->wiphy->fw_version),
+		 "Mediatek MT7925");
+
 	mt76_eeprom_override(&dev->mphy);
 
 	ret = mt7925_mcu_set_eeprom(dev);
@@ -257,6 +261,13 @@ static int __mt7925_init_hardware(struct mt792x_dev *dev)
 	if (ret)
 		goto out;
 
+	mt76_set_stream_caps(&dev->mphy, true);
+	mt7925_set_stream_he_eht_caps(&dev->phy);
+	mt792x_config_mac_addr_list(dev);
+
+	ret = mt7925_init_mlo_caps(&dev->phy);
+	if (ret)
+		dev_err(dev->mt76.dev, "MLO init failed\n");
 out:
 	return ret;
 }
@@ -292,16 +303,6 @@ static void mt7925_init_work(struct work_struct *work)
 	ret = mt7925_init_hardware(dev);
 	if (ret)
 		return;
-
-	mt76_set_stream_caps(&dev->mphy, true);
-	mt7925_set_stream_he_eht_caps(&dev->phy);
-	mt792x_config_mac_addr_list(dev);
-
-	ret = mt7925_init_mlo_caps(&dev->phy);
-	if (ret) {
-		dev_err(dev->mt76.dev, "MLO init failed\n");
-		return;
-	}
 
 	ret = mt76_register_device(&dev->mt76, true, mt76_rates,
 				   ARRAY_SIZE(mt76_rates));
