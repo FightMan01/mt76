@@ -1308,6 +1308,7 @@ enum {
 	MCU_UNI_CMD_ASSERT_DUMP = 0x6f,
 	MCU_UNI_CMD_RADIO_STATUS = 0x80,
 	MCU_UNI_CMD_SDO = 0x88,
+	MCU_UNI_CMD_COEX = 0x89,
 };
 
 enum {
@@ -1381,6 +1382,7 @@ enum {
 	UNI_BSS_INFO_MLD = 26,
 	UNI_BSS_INFO_PM_DISABLE = 27,
 	UNI_BSS_INFO_EHT = 30,
+	UNI_BSS_INFO_COEX = 31,
 };
 
 enum {
@@ -2065,4 +2067,9 @@ int mt76_connac2_load_ram(struct mt76_dev *dev, const char *fw_wm,
 int mt76_connac2_load_patch(struct mt76_dev *dev, const char *fw_name);
 int mt76_connac2_mcu_fill_message(struct mt76_dev *mdev, struct sk_buff *skb,
 				  int cmd, int *wait_seq);
+
+enum {
+	UNI_CMD_BT_COEX = 0x2,
+};
+
 #endif /* __MT76_CONNAC_MCU_H */
