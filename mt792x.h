@@ -185,6 +185,9 @@ struct mt792x_phy {
 	wait_queue_head_t roc_wait;
 	u8 roc_token_id;
 	bool roc_grant;
+	bool ap_active;
+	
+	struct delayed_work beacon_refresh_work;
 };
 
 struct mt792x_irq_map {

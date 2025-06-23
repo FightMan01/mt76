@@ -747,13 +747,14 @@ void mt7925_set_runtime_pm(struct mt792x_dev *dev)
 {
 	struct ieee80211_hw *hw = mt76_hw(dev);
 	struct mt76_connac_pm *pm = &dev->pm;
+	struct mt792x_phy *phy = &dev->phy;
 	bool monitor = !!(hw->conf.flags & IEEE80211_CONF_MONITOR);
 
-	pm->enable = pm->enable_user && !monitor;
+	pm->enable = pm->enable_user && !monitor && !phy->ap_active;
 	ieee80211_iterate_active_interfaces(hw,
 					    IEEE80211_IFACE_ITER_RESUME_ALL,
 					    mt7925_pm_interface_iter, dev);
-	pm->ds_enable = pm->ds_enable_user && !monitor;
+	pm->ds_enable = pm->ds_enable_user && !monitor && !phy->ap_active;
 	mt7925_mcu_set_deep_sleep(dev, pm->ds_enable);
 }
 
@@ -1309,7 +1310,11 @@ mt7925_ampdu_action(struct ieee80211_hw *hw, struct ieee80211_vif *vif,
 	case IEEE80211_AMPDU_TX_OPERATIONAL:
 		mtxq->aggr = true;
 		mtxq->send_bar = false;
-		mt7925_mcu_uni_tx_ba(dev, params, true);
+		ret = mt7925_mcu_uni_tx_ba(dev, params, true);
+		if (ret) {
+			mtxq->aggr = false;
+			clear_bit(tid, &msta->deflink.wcid.ampdu_state);
+		}
 		break;
 	case IEEE80211_AMPDU_TX_STOP_FLUSH:
 	case IEEE80211_AMPDU_TX_STOP_FLUSH_CONT:
@@ -1379,12 +1384,47 @@ static bool is_valid_alpha2(const char *alpha2)
 	return false;
 }
 
+static void mt7925_beacon_refresh_work(struct work_struct *work)
+{
+	struct mt792x_phy *phy = container_of(work, struct mt792x_phy,
+					      beacon_refresh_work.work);
+	struct mt792x_dev *dev = phy->dev;
+	struct ieee80211_hw *hw = mt76_hw(dev);
+
+	if (!phy->ap_active)
+		return;
+
+	ieee80211_iterate_active_interfaces_atomic(hw,
+		IEEE80211_IFACE_ITER_RESUME_ALL,
+		mt7925_beacon_refresh_iter, phy);
+
+	ieee80211_queue_delayed_work(hw, &phy->beacon_refresh_work,
+				     msecs_to_jiffies(30000));
+}
+
+static void mt7925_beacon_refresh_iter(void *priv, u8 *mac,
+				       struct ieee80211_vif *vif)
+{
+	struct mt792x_phy *phy = priv;
+	struct mt792x_dev *dev = phy->dev;
+
+	if (vif->type != NL80211_IFTYPE_AP)
+		return;
+
+	mt792x_mutex_acquire(dev);
+	mt7925_mcu_uni_add_beacon_offload(dev, mt76_hw(dev), vif, true);
+	mt792x_mutex_release(dev);
+}
+
 void mt7925_scan_work(struct work_struct *work)
 {
 	struct mt792x_phy *phy;
 
 	phy = (struct mt792x_phy *)container_of(work, struct mt792x_phy,
 						scan_work.work);
+
+	if (phy->ap_active)
+		return;
 
 	while (true) {
 		struct mt76_dev *mdev = &phy->dev->mt76;
@@ -1449,8 +1489,12 @@ mt7925_hw_scan(struct ieee80211_hw *hw, struct ieee80211_vif *vif,
 	       struct ieee80211_scan_request *req)
 {
 	struct mt792x_dev *dev = mt792x_hw_dev(hw);
+	struct mt792x_phy *phy = mt792x_hw_phy(hw);
 	struct mt76_phy *mphy = hw->priv;
 	int err;
+
+	if (phy->ap_active && vif->type != NL80211_IFTYPE_AP)
+		return -EBUSY;
 
 	mt792x_mutex_acquire(dev);
 	err = mt7925_mcu_hw_scan(mphy, vif, req);
@@ -1790,6 +1834,8 @@ mt7925_start_ap(struct ieee80211_hw *hw, struct ieee80211_vif *vif,
 
 	mt792x_mutex_acquire(dev);
 
+	phy->ap_active = true;
+
 	err = mt7925_mcu_add_bss_info(&dev->phy, mvif->bss_conf.mt76.ctx,
 				      link_conf, NULL, true);
 	if (err)
@@ -1801,6 +1847,13 @@ mt7925_start_ap(struct ieee80211_hw *hw, struct ieee80211_vif *vif,
 
 	err = mt7925_mcu_sta_update(dev, NULL, vif, true,
 				    MT76_STA_INFO_STATE_NONE);
+	if (err)
+		goto out;
+
+	ieee80211_queue_delayed_work(mt76_hw(dev), &phy->beacon_refresh_work,
+				     msecs_to_jiffies(30000));
+
+	mt7925_set_runtime_pm(dev);
 out:
 	mt792x_mutex_release(dev);
 
@@ -1817,12 +1870,18 @@ mt7925_stop_ap(struct ieee80211_hw *hw, struct ieee80211_vif *vif,
 
 	mt792x_mutex_acquire(dev);
 
+	phy->ap_active = false;
+
+	cancel_delayed_work_sync(&phy->beacon_refresh_work);
+
 	err = mt7925_mcu_set_bss_pm(dev, link_conf, false);
 	if (err)
 		goto out;
 
 	mt7925_mcu_add_bss_info(&dev->phy, mvif->bss_conf.mt76.ctx, link_conf,
 				NULL, false);
+
+	mt7925_set_runtime_pm(dev);
 
 out:
 	mt792x_mutex_release(dev);
