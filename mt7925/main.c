@@ -1706,24 +1706,26 @@ static void mt7925_ipv6_addr_change(struct ieee80211_hw *hw,
 int mt7925_set_tx_sar_pwr(struct ieee80211_hw *hw,
 			  const struct cfg80211_sar_specs *sar)
 {
-	struct mt792x_phy *phy = mt792x_hw_phy(hw);
-	struct mt76_phy *mphy = &phy->mt76;
-	int err, pwr;
+	struct mt76_phy *mphy = hw->priv;
+	int err;
+	s8 tx_power;
+	struct mt76_power_limits limits;
 
-	err = mt7925_mcu_set_tx_power_from_sar(phy, sar);
+	if (sar) {
+		err = mt76_init_sar_power(hw, sar);
+		if (err)
+			return err;
+	}
+	mt792x_init_acpi_sar_power(mt792x_hw_phy(hw), !sar);
+
+	err = mt7925_mcu_set_rate_txpower(mphy);
 	if (err)
 		return err;
 
-	memcpy(&mphy->sar_power_limit, sar, sizeof(*sar));
-	mphy->sar_power_ctrl = true;
-
-	pwr = hw->conf.power_level;
-	if (pwr == 0)
-		pwr = mt76_get_power_bound(mphy, pwr);
-
-	mphy->txpower_cur = mt76_get_sar_power(mphy, mphy->chandef.chan,
-						   pwr);
-
+	tx_power = mt76_get_power_bound(mphy, hw->conf.power_level);
+	tx_power = mt76_get_rate_power_limits(mphy, mphy->chandef.chan,
+					      &limits, tx_power);
+	mphy->txpower_cur = tx_power;
 	return 0;
 }
 
