@@ -1752,9 +1752,8 @@ int mt7925_set_tx_sar_pwr(struct ieee80211_hw *hw,
 			  const struct cfg80211_sar_specs *sar)
 {
 	struct mt76_phy *mphy = hw->priv;
-	struct mt792x_phy *phy = mphy->priv;
 	struct mt76_power_limits limits_array;
-	int err = 0, tx_power;
+	int err, tx_power;
 
 	if (sar) {
 		err = mt76_init_sar_power(hw, sar);
@@ -1769,11 +1768,7 @@ int mt7925_set_tx_sar_pwr(struct ieee80211_hw *hw,
 
 	mphy->txpower_cur = tx_power;
 
-	err = mt7925_mcu_set_tx_power(phy, tx_power);
-	if (err)
-		return err;
-
-	return 0;
+	return mt7925_mcu_set_rate_txpower(mphy);
 }
 
 static int mt7925_set_sar_specs(struct ieee80211_hw *hw,
