@@ -387,14 +387,6 @@ static int __mt7925_init_hardware(struct mt792x_dev *dev)
 	if (ret)
 		dev_warn(dev->mt76.dev, "Failed to initialize coexistence: %d\n", ret);
 
-	for (idx = 0; idx < MT792x_WTBL_SIZE; idx++) {
-		ret = mt76_connac_mcu_uni_add_dev(&dev->mt76, NULL, idx, true);
-		if (ret) {
-			dev_warn(dev->mt76.dev, "Failed to add device %d: %d\n", idx, ret);
-			continue;
-		}
-	}
-
 	/* Verify hardware state after initialization */
 	ret = mt7925_mcu_get_nic_capability(dev);
 	if (ret) {

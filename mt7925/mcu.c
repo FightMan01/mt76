@@ -3829,41 +3829,13 @@ int mt7925_mcu_set_coex(struct mt792x_phy *phy, u8 cmd)
 		__le16 tag;
 		__le16 len;
 		u8 op;
-		u8 mode;  /* Enhanced coexistence mode */
-		u8 priority; /* Coexistence priority settings */
-		u8 bt_profile; /* Bluetooth profile detection */
-		u8 wifi_activity; /* WiFi activity level */
-		u8 adaptive_enable; /* Enable adaptive coexistence */
-		u8 interference_level; /* Current interference level */
-		u8 rsv2;
+		u8 _rsv2[7];
 	} __packed req = {
-		.tag = cpu_to_le16(UNI_BAND_CONFIG_COEX_CTRL),
+		.tag = cpu_to_le16(UNI_CMD_BT_COEX),
 		.len = cpu_to_le16(sizeof(req) - 4),
 		.op = cmd,
-		.mode = 0x1, /* Enhanced coexistence mode */
-		.priority = 0x3, /* Balanced priority for WiFi and BT */
-		.bt_profile = 0xFF, /* Auto-detect BT profile */
-		.wifi_activity = 0x2, /* Medium WiFi activity assumption */
-		.adaptive_enable = 0x1, /* Enable adaptive algorithms */
-		.interference_level = 0x1, /* Low interference initially */
 	};
 
-	/* Adaptive coexistence based on band */
-	if (phy->mt76->chandef.chan && phy->mt76->chandef.chan->band == NL80211_BAND_2GHZ) {
-		/* 2.4GHz - More aggressive coexistence */
-		req.priority = 0x2; /* Favor WiFi slightly on 2.4GHz */
-		req.interference_level = 0x2; /* Assume higher interference */
-		req.adaptive_enable = 0x1; /* Enable adaptive mode */
-	} else {
-		/* 5GHz/6GHz - Less interference, lighter coexistence */
-		req.priority = 0x4; /* Favor WiFi more on 5GHz */
-		req.interference_level = 0x0; /* Lower interference */
-		req.adaptive_enable = 0x0; /* Less adaptive needed */
-	}
-
-	dev_dbg(dev->mt76.dev, "Setting coexistence: cmd=%d, mode=%d, priority=%d\n",
-		cmd, req.mode, req.priority);
-
-	return mt76_mcu_send_msg(&dev->mt76, MCU_UNI_CMD(BAND_CONFIG),
-				 &req, sizeof(req), true);
+	return mt76_mcu_send_msg(&dev->mt76, MCU_WM_UNI_CMD(COEX), &req,
+				 sizeof(req), true);
 }

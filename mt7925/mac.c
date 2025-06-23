@@ -449,8 +449,8 @@ mt7925_mac_fill_rx(struct mt792x_dev *dev, struct sk_buff *skb)
 
 		/* Validate mapped addresses to prevent out-of-bounds access */
 		if (FIELD_GET(MT_RXD8_FRAME_CONTROL, v0) > 0xFFFF) {
-			dev_warn(dev->mt76.dev, "Invalid frame control in RXD Group 4: 0x%x\n", 
-				 FIELD_GET(MT_RXD8_FRAME_CONTROL, v0));
+			dev_warn(dev->mt76.dev, "Invalid frame control in RXD Group 4: 0x%lx\n", 
+				 (unsigned long)FIELD_GET(MT_RXD8_FRAME_CONTROL, v0));
 			fc = 0;
 		}
 
