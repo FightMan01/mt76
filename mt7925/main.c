@@ -1400,7 +1400,7 @@ static void mt7925_beacon_refresh_iter(void *priv, u8 *mac,
 	mt792x_mutex_release(dev);
 }
 
-static void mt7925_beacon_refresh_work(struct work_struct *work)
+void mt7925_beacon_refresh_work(struct work_struct *work)
 {
 	struct mt792x_phy *phy = container_of(work, struct mt792x_phy,
 					      beacon_refresh_work.work);
