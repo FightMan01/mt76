@@ -223,6 +223,7 @@ int mt7925_mac_init(struct mt792x_dev *dev)
 
 	return 0;
 }
+EXPORT_SYMBOL_GPL(mt7925_mac_init);
 
 static int __mt7925_init_hardware(struct mt792x_dev *dev)
 {
