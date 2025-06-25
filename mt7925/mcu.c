@@ -2190,7 +2190,6 @@ mt7925_mcu_uni_add_beacon_offload(struct mt792x_dev *dev,
 		},
 	};
 	struct sk_buff *skb;
-	u8 cap_offs;
 
 	/* support enable/update process only
 	 * disable flow would be handled in bss stop handler automatically
