@@ -56,6 +56,7 @@ mt7925_init_he_caps(struct mt792x_phy *phy, enum nl80211_band band,
 
 	switch (iftype) {
 	case NL80211_IFTYPE_AP:
+		he_cap_elem->mac_cap_info[0] |= IEEE80211_HE_MAC_CAP0_TWT_RES;
 		he_cap_elem->mac_cap_info[2] |=
 			IEEE80211_HE_MAC_CAP2_BSR;
 		he_cap_elem->mac_cap_info[4] |=
@@ -71,14 +72,6 @@ mt7925_init_he_caps(struct mt792x_phy *phy, enum nl80211_band band,
 		he_cap_elem->phy_cap_info[9] |=
 			IEEE80211_HE_PHY_CAP9_TX_1024_QAM_LESS_THAN_242_TONE_RU |
 			IEEE80211_HE_PHY_CAP9_RX_1024_QAM_LESS_THAN_242_TONE_RU;
-		
-		he_cap_elem->phy_cap_info[8] &= ~(IEEE80211_HE_PHY_CAP8_HE_ER_SU_PPDU_4XLTF_AND_08_US_GI |
-						  IEEE80211_HE_PHY_CAP8_HE_ER_SU_1XLTF_AND_08_US_GI |
-						  IEEE80211_HE_PHY_CAP8_20MHZ_IN_40MHZ_HE_PPDU_IN_2G |
-						  IEEE80211_HE_PHY_CAP8_20MHZ_IN_160MHZ_HE_PPDU |
-						  IEEE80211_HE_PHY_CAP8_80MHZ_IN_160MHZ_HE_PPDU);
-		
-		he_cap_elem->phy_cap_info[0] &= ~IEEE80211_HE_PHY_CAP0_CHANNEL_WIDTH_SET_MASK;
 		break;
 	case NL80211_IFTYPE_STATION:
 		he_cap_elem->phy_cap_info[2] |=
