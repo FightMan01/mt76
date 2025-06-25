@@ -69,6 +69,8 @@ mt7925_init_he_caps(struct mt792x_phy *phy, enum nl80211_band band,
 		he_cap_elem->phy_cap_info[6] |=
 			IEEE80211_HE_PHY_CAP6_PARTIAL_BW_EXT_RANGE |
 			IEEE80211_HE_PHY_CAP6_PPE_THRESHOLD_PRESENT;
+		he_cap_elem->phy_cap_info[7] |=
+			IEEE80211_HE_PHY_CAP7_HE_SU_MU_PPDU_4XLTF_AND_08_US_GI;
 		he_cap_elem->phy_cap_info[9] |=
 			IEEE80211_HE_PHY_CAP9_TX_1024_QAM_LESS_THAN_242_TONE_RU |
 			IEEE80211_HE_PHY_CAP9_RX_1024_QAM_LESS_THAN_242_TONE_RU;
@@ -1441,8 +1443,9 @@ void mt7925_beacon_refresh_work(struct work_struct *work)
 		IEEE80211_IFACE_ITER_RESUME_ALL,
 		mt7925_beacon_refresh_iter, phy);
 
+	/* Reduce beacon refresh frequency to prevent firmware overload */
 	ieee80211_queue_delayed_work(hw, &phy->beacon_refresh_work,
-				     msecs_to_jiffies(30000));
+				     msecs_to_jiffies(10000));
 }
 
 void mt7925_scan_work(struct work_struct *work)

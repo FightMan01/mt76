@@ -23,8 +23,15 @@ int mt7925_mcu_parse_response(struct mt76_dev *mdev, int cmd,
 
 	if (!skb) {
 		dev_err(mdev->dev, "Message %08x (seq %d) timeout\n", cmd, seq);
+		
+		/* For critical BSS/STA commands, attempt recovery without full reset */
+		if (cmd == MCU_UNI_CMD(BSS_INFO_UPDATE) || cmd == MCU_UNI_CMD(STA_REC_UPDATE)) {
+			dev_warn(mdev->dev, "Critical command timeout, attempting firmware recovery\n");
+			/* Don't trigger full reset immediately for these commands */
+			return -EAGAIN;
+		}
+		
 		mt792x_reset(mdev);
-
 		return -ETIMEDOUT;
 	}
 
@@ -2179,7 +2186,7 @@ mt7925_mcu_uni_add_beacon_offload(struct mt792x_dev *dev,
 			.tag = cpu_to_le16(UNI_BSS_INFO_BCN_CONTENT),
 			.len = cpu_to_le16(sizeof(struct bcn_content_tlv)),
 			.enable = enable,
-			.type = 1,
+			.type = 0,
 		},
 	};
 	struct sk_buff *skb;
@@ -2195,28 +2202,24 @@ mt7925_mcu_uni_add_beacon_offload(struct mt792x_dev *dev,
 	if (!skb)
 		return -EINVAL;
 
-	cap_offs = offsetof(struct ieee80211_mgmt, u.beacon.capab_info);
-	if (!skb_pull(skb, cap_offs)) {
-		dev_err(dev->mt76.dev, "beacon format err\n");
-		dev_kfree_skb(skb);
-		return -EINVAL;
-	}
-
-	if (skb->len > 512) {
+	if (skb->len > 512 - MT_TXD_SIZE) {
 		dev_err(dev->mt76.dev, "beacon size limit exceed\n");
 		dev_kfree_skb(skb);
 		return -EINVAL;
 	}
 
-	memcpy(req.beacon_tlv.pkt, skb->data, skb->len);
-	req.beacon_tlv.pkt_len = cpu_to_le16(skb->len);
-	offs.tim_offset -= cap_offs;
-	req.beacon_tlv.tim_ie_pos = cpu_to_le16(offs.tim_offset);
+	/* Use legacy format with TXD + payload for better compatibility */
+	mt7925_mac_write_txwi(&dev->mt76, (__le32 *)(req.beacon_tlv.pkt),
+			      skb, &dev->mt76.global_wcid, NULL, 0, 0,
+			      BSS_CHANGED_BEACON);
+	memcpy(req.beacon_tlv.pkt + MT_TXD_SIZE, skb->data, skb->len);
+	req.beacon_tlv.pkt_len = cpu_to_le16(MT_TXD_SIZE + skb->len);
+	req.beacon_tlv.tim_ie_pos = cpu_to_le16(MT_TXD_SIZE + offs.tim_offset);
 
 	if (offs.cntdwn_counter_offs[0]) {
 		u16 csa_offs;
 
-		csa_offs = offs.cntdwn_counter_offs[0] - cap_offs - 4;
+		csa_offs = MT_TXD_SIZE + offs.cntdwn_counter_offs[0] - 4;
 		req.beacon_tlv.csa_ie_pos = cpu_to_le16(csa_offs);
 	}
 	dev_kfree_skb(skb);
@@ -3407,6 +3410,9 @@ int mt7925_mcu_fill_message(struct mt76_dev *mdev, struct sk_buff *skb,
 	} else if (cmd == MCU_UNI_CMD(SUSPEND) || cmd == MCU_UNI_CMD(OFFLOAD)) {
 		/* Power management operations - 15 seconds */
 		mdev->mcu.timeout = 15 * HZ;
+	} else if (cmd == MCU_UNI_CMD(BSS_INFO_UPDATE) || cmd == MCU_UNI_CMD(STA_REC_UPDATE)) {
+		/* BSS/STA configuration - longer timeout for stability */
+		mdev->mcu.timeout = 20 * HZ;
 	} else if (mcu_cmd == MCU_UNI_CMD_TESTMODE_CTRL || 
 		   mcu_cmd == MCU_UNI_CMD_TESTMODE_RX_STAT) {
 		/* Test mode operations - 10 seconds */
