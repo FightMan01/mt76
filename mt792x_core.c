@@ -904,6 +904,9 @@ int mt792x_load_firmware(struct mt792x_dev *dev)
 	if (ret)
 		return ret;
 
+	/* Add delay to allow firmware patch to settle before next operations */
+	msleep(20);
+
 	if (mt76_is_sdio(&dev->mt76)) {
 		/* activate again */
 		ret = __mt792x_mcu_fw_pmctrl(dev);
