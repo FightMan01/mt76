@@ -2918,7 +2918,8 @@ int mt7925_mcu_hw_scan(struct mt76_phy *phy, struct ieee80211_vif *vif,
 	tlv = mt76_connac_mcu_add_tlv(skb, UNI_SCAN_REQ, sizeof(*req));
 	req = (struct scan_req_tlv *)tlv;
 	req->scan_type = sreq->n_ssids ? 1 : 0;
-	req->probe_req_num = sreq->n_ssids ? 2 : 0;
+	req->probe_req_num = sreq->n_ssids ? 4 : 0;
+	req->probe_delay_time = cpu_to_le16(30);
 
 	tlv = mt76_connac_mcu_add_tlv(skb, UNI_SCAN_SSID, sizeof(*ssid));
 	ssid = (struct scan_ssid_tlv *)tlv;
@@ -2987,6 +2988,9 @@ int mt7925_mcu_hw_scan(struct mt76_phy *phy, struct ieee80211_vif *vif,
 	chan_info->channel_type = sreq->n_channels ? 4 : 0;
 
 	req->scan_func |= SCAN_FUNC_SPLIT_SCAN;
+	/* Improve Apple device discovery by enhancing dwell time */
+	req->channel_min_dwell_time = cpu_to_le16(120);
+	req->channel_dwell_time = cpu_to_le16(150);
 
 	tlv = mt76_connac_mcu_add_tlv(skb, UNI_SCAN_MISC, sizeof(*misc));
 	misc = (struct scan_misc_tlv *)tlv;

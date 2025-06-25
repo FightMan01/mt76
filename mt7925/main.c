@@ -1443,9 +1443,9 @@ void mt7925_beacon_refresh_work(struct work_struct *work)
 		IEEE80211_IFACE_ITER_RESUME_ALL,
 		mt7925_beacon_refresh_iter, phy);
 
-	/* Reduce beacon refresh frequency to prevent firmware overload */
+	/* Optimized beacon refresh for better Apple device discovery */
 	ieee80211_queue_delayed_work(hw, &phy->beacon_refresh_work,
-				     msecs_to_jiffies(10000));
+				     msecs_to_jiffies(7500));
 }
 
 void mt7925_scan_work(struct work_struct *work)
