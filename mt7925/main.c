@@ -1443,9 +1443,12 @@ void mt7925_beacon_refresh_work(struct work_struct *work)
 		IEEE80211_IFACE_ITER_RESUME_ALL,
 		mt7925_beacon_refresh_iter, phy);
 
-	/* Optimized beacon refresh for better Apple device discovery */
-	ieee80211_queue_delayed_work(hw, &phy->beacon_refresh_work,
-				     msecs_to_jiffies(7500));
+	/* Only queue next beacon refresh if device is still initialized and AP is active */
+	if (phy->ap_active && dev->hw_init_done) {
+		/* Optimized beacon refresh for better Apple device discovery */
+		ieee80211_queue_delayed_work(hw, &phy->beacon_refresh_work,
+					     msecs_to_jiffies(7500));
+	}
 }
 
 void mt7925_scan_work(struct work_struct *work)
@@ -1879,8 +1882,11 @@ mt7925_start_ap(struct ieee80211_hw *hw, struct ieee80211_vif *vif,
 	if (err)
 		goto out;
 
-	ieee80211_queue_delayed_work(mt76_hw(dev), &phy->beacon_refresh_work,
-				     msecs_to_jiffies(30000));
+	/* Only queue beacon refresh if device is fully initialized */
+	if (dev->hw_init_done) {
+		ieee80211_queue_delayed_work(mt76_hw(dev), &phy->beacon_refresh_work,
+					     msecs_to_jiffies(7500));
+	}
 
 	mt7925_set_runtime_pm(dev);
 out:

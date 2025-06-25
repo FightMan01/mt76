@@ -322,6 +322,12 @@ static void mt7925_init_work(struct work_struct *work)
 	/* we support chip reset now */
 	dev->hw_init_done = true;
 
+	/* Start beacon refresh work for AP mode if needed */
+	if (dev->phy.ap_active) {
+		ieee80211_queue_delayed_work(mt76_hw(dev), &dev->phy.beacon_refresh_work,
+					     msecs_to_jiffies(7500));
+	}
+
 	mt7925_mcu_set_deep_sleep(dev, dev->pm.ds_enable);
 }
 
