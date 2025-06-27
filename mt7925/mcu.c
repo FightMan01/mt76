@@ -24,13 +24,6 @@ int mt7925_mcu_parse_response(struct mt76_dev *mdev, int cmd,
 	if (!skb) {
 		dev_err(mdev->dev, "Message %08x (seq %d) timeout\n", cmd, seq);
 		
-		/* For critical BSS/STA commands, attempt recovery without full reset */
-		if (cmd == MCU_UNI_CMD(BSS_INFO_UPDATE) || cmd == MCU_UNI_CMD(STA_REC_UPDATE)) {
-			dev_warn(mdev->dev, "Critical command timeout, attempting firmware recovery\n");
-			/* Don't trigger full reset immediately for these commands */
-			return -EAGAIN;
-		}
-		
 		mt792x_reset(mdev);
 		return -ETIMEDOUT;
 	}
@@ -2839,7 +2832,7 @@ mt7925_mcu_build_scan_ie_tlv(struct mt76_dev *mdev,
 	u16 ies_len;
 
 	for (i = 0; i <= NL80211_BAND_6GHZ; i++) {
-		if (i == NL80211_BAND_60GHZ)
+		if (i == NL80211_BAND_60GH)
 			continue;
 
 		ies = scan_ies->ies[i];
@@ -2918,7 +2911,8 @@ int mt7925_mcu_hw_scan(struct mt76_phy *phy, struct ieee80211_vif *vif,
 	tlv = mt76_connac_mcu_add_tlv(skb, UNI_SCAN_REQ, sizeof(*req));
 	req = (struct scan_req_tlv *)tlv;
 	req->scan_type = sreq->n_ssids ? 1 : 0;
-	req->probe_req_num = sreq->n_ssids ? 2 : 0;
+	req->probe_req_num = sreq->n_ssids ? 4 : 0;
+	req->probe_delay_time = cpu_to_le16(30);
 
 	tlv = mt76_connac_mcu_add_tlv(skb, UNI_SCAN_SSID, sizeof(*ssid));
 	ssid = (struct scan_ssid_tlv *)tlv;
@@ -2989,8 +2983,8 @@ int mt7925_mcu_hw_scan(struct mt76_phy *phy, struct ieee80211_vif *vif,
 
 	req->scan_func |= SCAN_FUNC_SPLIT_SCAN;
 	/* Improve Apple device discovery by enhancing dwell time */
-	// req->channel_min_dwell_time = cpu_to_le16(120);
-	// req->channel_dwell_time = cpu_to_le16(150);
+	req->channel_min_dwell_time = cpu_to_le16(120);
+	req->channel_dwell_time = cpu_to_le16(150);
 
 	tlv = mt76_connac_mcu_add_tlv(skb, UNI_SCAN_MISC, sizeof(*misc));
 	misc = (struct scan_misc_tlv *)tlv;

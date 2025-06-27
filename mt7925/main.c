@@ -71,13 +71,6 @@ mt7925_init_he_caps(struct mt792x_phy *phy, enum nl80211_band band,
 		he_cap_elem->phy_cap_info[6] |=
 			IEEE80211_HE_PHY_CAP6_PARTIAL_BW_EXT_RANGE |
 			IEEE80211_HE_PHY_CAP6_PPE_THRESHOLD_PRESENT;
-		he_cap_elem->phy_cap_info[7] |=
-			IEEE80211_HE_PHY_CAP7_HE_SU_MU_PPDU_4XLTF_AND_08_US_GI;
-		he_cap_elem->phy_cap_info[8] &= ~(IEEE80211_HE_PHY_CAP8_HE_ER_SU_PPDU_4XLTF_AND_08_US_GI |
-						  IEEE80211_HE_PHY_CAP8_HE_ER_SU_1XLTF_AND_08_US_GI |
-						  IEEE80211_HE_PHY_CAP8_20MHZ_IN_40MHZ_HE_PPDU_IN_2G |
-						  IEEE80211_HE_PHY_CAP8_20MHZ_IN_160MHZ_HE_PPDU |
-						  IEEE80211_HE_PHY_CAP8_80MHZ_IN_160MHZ_HE_PPDU);
 		he_cap_elem->phy_cap_info[9] |=
 			IEEE80211_HE_PHY_CAP9_TX_1024_QAM_LESS_THAN_242_TONE_RU |
 			IEEE80211_HE_PHY_CAP9_RX_1024_QAM_LESS_THAN_242_TONE_RU;
@@ -1454,9 +1447,8 @@ void mt7925_beacon_refresh_work(struct work_struct *work)
 
 	/* Only queue next beacon refresh if device is still initialized and AP is active */
 	if (phy->ap_active && dev->hw_init_done) {
-		/* Optimized beacon refresh for better Apple device discovery */
 		ieee80211_queue_delayed_work(hw, &phy->beacon_refresh_work,
-					     msecs_to_jiffies(7500));
+					     msecs_to_jiffies(30000));
 	}
 }
 
