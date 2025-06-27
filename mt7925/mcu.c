@@ -2878,7 +2878,7 @@ int mt7925_mcu_hw_scan(struct mt76_phy *phy, struct ieee80211_vif *vif,
 		       struct ieee80211_scan_request *sreq)
 {
 	struct mt76_vif_link *mvif = (struct mt76_vif_link *)vif->drv_priv;
-	struct cfg80211_scan_request *sreq = &scan_req->req;
+	struct cfg80211_scan_request *sreq = &sreq->req;
 	int n_ssids = 0, err, i;
 	struct ieee80211_channel **scan_list = sreq->channels;
 	struct mt76_dev *mdev = phy->dev;
@@ -3002,7 +3002,7 @@ int mt7925_mcu_hw_scan(struct mt76_phy *phy, struct ieee80211_vif *vif,
 	}
 
 	/* Append scan probe IEs as the last tlv */
-	mt7925_mcu_build_scan_ie_tlv(mdev, skb, &scan_req->ies);
+	mt7925_mcu_build_scan_ie_tlv(mdev, skb, &sreq->ies);
 
 	err = mt76_mcu_skb_send_msg(mdev, skb, MCU_UNI_CMD(SCAN_REQ),
 				    true);
