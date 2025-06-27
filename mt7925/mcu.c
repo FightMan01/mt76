@@ -2832,7 +2832,7 @@ mt7925_mcu_build_scan_ie_tlv(struct mt76_dev *mdev,
 	u16 ies_len;
 
 	for (i = 0; i <= NL80211_BAND_6GHZ; i++) {
-		if (i == NL80211_BAND_60GH)
+		if (i == NL80211_BAND_60GHZ)
 			continue;
 
 		ies = scan_ies->ies[i];
