@@ -32,10 +32,11 @@ mt7925_init_he_caps(struct mt792x_phy *phy, enum nl80211_band band,
 	he_cap->has_he = true;
 
 	he_cap_elem->mac_cap_info[0] = IEEE80211_HE_MAC_CAP0_HTC_HE;
-	if (iftype != NL80211_IFTYPE_AP)
+	if (iftype != NL80211_IFTYPE_AP) {
 		he_cap_elem->mac_cap_info[0] |= IEEE80211_HE_MAC_CAP0_TWT_REQ;
-	else
+	} else {
 		he_cap_elem->mac_cap_info[0] |= IEEE80211_HE_MAC_CAP0_TWT_RES;
+	}
 
 	he_cap_elem->mac_cap_info[3] = IEEE80211_HE_MAC_CAP3_OMI_CONTROL |
 				       IEEE80211_HE_MAC_CAP3_MAX_AMPDU_LEN_EXP_EXT_3;
