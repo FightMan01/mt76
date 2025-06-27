@@ -419,13 +419,7 @@ int mt7925_register_device(struct mt792x_dev *dev)
 	dev->mphy.hw->wiphy->available_antennas_rx = dev->mphy.chainmask;
 	dev->mphy.hw->wiphy->available_antennas_tx = dev->mphy.chainmask;
 
-	/* Validate hw structure before queuing work */
-	if (hw && hw->workqueue) {
-		ieee80211_queue_work(hw, &dev->init_work);
-	} else {
-		dev_err(dev->mt76.dev, "Invalid hw or workqueue, cannot queue init work\n");
-		return -EINVAL;
-	}
+	ieee80211_queue_work(hw, &dev->init_work);
 
 	return 0;
 }
