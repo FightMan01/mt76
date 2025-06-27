@@ -336,6 +336,11 @@ int mt7925_register_device(struct mt792x_dev *dev)
 	struct ieee80211_hw *hw = mt76_hw(dev);
 	int ret;
 
+	if (!hw) {
+		dev_err(dev->mt76.dev, "ieee80211_hw is NULL, device registration failed\n");
+		return -EINVAL;
+	}
+
 	dev->phy.dev = dev;
 	dev->phy.mt76 = &dev->mt76.phy;
 	dev->mt76.phy.priv = &dev->phy;
@@ -414,7 +419,13 @@ int mt7925_register_device(struct mt792x_dev *dev)
 	dev->mphy.hw->wiphy->available_antennas_rx = dev->mphy.chainmask;
 	dev->mphy.hw->wiphy->available_antennas_tx = dev->mphy.chainmask;
 
-	ieee80211_queue_work(hw, &dev->init_work);
+	/* Validate hw structure before queuing work */
+	if (hw && hw->workqueue) {
+		ieee80211_queue_work(hw, &dev->init_work);
+	} else {
+		dev_err(dev->mt76.dev, "Invalid hw or workqueue, cannot queue init work\n");
+		return -EINVAL;
+	}
 
 	return 0;
 }
